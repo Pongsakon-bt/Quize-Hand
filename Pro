@@ -1,0 +1,740 @@
+<!-- 
+=== คู่มือการใช้งาน (Teacher's Guide) ===
+- ระบบ Hybrid Control: รองรับทั้ง 2 วิธีพร้อมกัน
+  1. Motion Hand: ยกมือจ่อค้าง 3 วินาที (วงแดงหมุน)
+  2. Click/Touch: ใช้เมาส์คลิก หรือนิ้วแตะที่ปุ่มเพื่อสั่งงานทันที
+-->
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมความรู้รอบตัว: Motion & Click Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { font-family: 'Kanit', sans-serif; overflow: hidden; background-color: #0f172a; }
+        
+        /* Mirror the video container */
+        .mirror-mode {
+            transform: scaleX(-1);
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        
+        .progress-fill {
+            transition: height 0.1s linear;
+        }
+
+        #confetti-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 60;
+        }
+
+        /* Custom Cursor Style */
+        .hand-cursor-container {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            pointer-events: none;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: translate(-50%, -50%);
+            transition: left 0.1s ease-out, top 0.1s ease-out;
+        }
+
+        .hand-icon {
+            width: 60px;
+            height: 60px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23EF4444' stroke='%23FFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0'%3E%3C/path%3E%3Cpath d='M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2'%3E%3C/path%3E%3Cpath d='M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8'%3E%3C/path%3E%3Cpath d='M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'%3E%3C/path%3E%3C/svg%3E");
+            background-size: cover;
+            filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.8));
+            position: absolute;
+        }
+
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.1s linear;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+            stroke: #EF4444;
+        }
+
+        .hover-active {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            border-color: #EF4444 !important;
+        }
+
+        .tube-container {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px 10px 0 0;
+            backdrop-filter: blur(4px);
+        }
+        
+        .text-fit {
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            line-height: 1.1;
+        }
+
+        /* เพิ่ม Cursor Pointer เมื่อเอาเมาส์ไปชี้ปุ่ม */
+        .interactive-btn { cursor: pointer; }
+        .answer-zone { cursor: pointer; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center relative text-white bg-slate-900">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-indigo-900 text-white">
+        <div class="animate-spin rounded-full h-32 w-32 border-b-4 border-red-500 mb-8"></div>
+        <h1 class="text-4xl font-bold mb-4">กำลังเตรียมระบบ...</h1>
+        <p class="text-xl text-indigo-200">กรุณาเปิดกล้องและยกมือขึ้น 👋</p>
+        <div id="loading-status" class="mt-4 text-sm text-indigo-300">Initializing MediaPipe Hands...</div>
+    </div>
+
+    <!-- Main Menu -->
+    <div id="menu-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 hidden">
+        <div class="text-center animate-float mb-8">
+            <h1 class="text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-500 drop-shadow-lg mb-4">Quiz Game</h1>
+            <h2 class="text-3xl font-bold text-white drop-shadow-md">✋ ยกมือค้าง 3 วิ หรือ 🖱️ คลิกเพื่อเริ่ม</h2>
+        </div>
+        
+        <div class="bg-white/10 p-8 rounded-3xl backdrop-blur-md border border-white/20 max-w-5xl w-full text-center shadow-2xl">
+            <p class="text-2xl text-yellow-300 mb-6 font-bold">เลือกระดับความท้าทาย</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- Added onclick events -->
+                <div id="btn-easy" onclick="startGame('easy')" class="interactive-btn group relative p-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
+                    <div class="text-4xl mb-2">🌱</div>
+                    <div class="text-2xl font-bold">ง่าย</div>
+                    <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">จำนวน 10 ข้อ</div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-red-500 transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+
+                <div id="btn-medium" onclick="startGame('medium')" class="interactive-btn group relative p-6 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
+                    <div class="text-4xl mb-2">⚡</div>
+                    <div class="text-2xl font-bold">ปานกลาง</div>
+                    <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">จำนวน 20 ข้อ</div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-red-500 transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+
+                <div id="btn-hard" onclick="startGame('hard')" class="interactive-btn group relative p-6 bg-gradient-to-br from-red-500 to-rose-700 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
+                    <div class="text-4xl mb-2">🔥</div>
+                    <div class="text-2xl font-bold">ยาก</div>
+                    <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">จำนวน 30 ข้อ</div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+            </div>
+
+            <div class="text-sm text-gray-300">
+                <span class="mr-4">📷 เปิดกล้อง</span>
+                <span class="mr-4">⏳ จ่อค้าง 3 วินาที (วงแดง) หรือ คลิกเพื่อเลือก</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="absolute inset-0 z-30 flex flex-col hidden">
+        <!-- Header -->
+        <div class="h-32 bg-slate-900/90 backdrop-blur flex items-center justify-between px-6 border-b border-white/10 shadow-xl z-20 relative">
+            <div class="flex flex-col w-48">
+                <span class="text-gray-400 text-sm">ข้อที่</span>
+                <span id="progress-display" class="text-white font-mono font-bold text-4xl text-pink-400">1/10</span>
+            </div>
+            
+            <div id="question-container" class="flex-1 px-4 flex items-center justify-center">
+                <div id="question-display" class="bg-white text-slate-900 px-8 py-4 rounded-2xl text-3xl font-extrabold shadow-[0_0_15px_rgba(255,255,255,0.3)] border-4 border-indigo-500 w-full max-w-3xl text-center leading-tight">
+                    กำลังโหลดคำถาม...
+                </div>
+            </div>
+
+            <div class="flex flex-col items-end w-48">
+                <div class="flex items-center gap-3 mb-1">
+                    <!-- Added onclick -->
+                    <div id="btn-quit" onclick="endGame()" class="interactive-btn px-4 py-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm rounded-lg transition border-2 border-transparent relative overflow-hidden cursor-pointer">
+                        <span class="relative z-10">เลิกเล่น (สรุปผล)</span>
+                        <div class="absolute bottom-0 left-0 h-1 bg-white transition-all duration-100 ease-linear w-0 loading-bar rounded-b-lg"></div>
+                    </div>
+                </div>
+                <div class="flex items-end gap-2">
+                    <span class="text-gray-400 text-sm mb-1">คะแนน</span>
+                    <span id="score-display" class="text-yellow-400 font-bold text-5xl drop-shadow-glow leading-none">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Area -->
+        <div class="flex-1 relative overflow-hidden bg-black w-full">
+            <video id="webcam" class="hidden" autoplay playsinline></video>
+            
+            <div class="absolute inset-0 w-full h-full mirror-mode">
+                <canvas id="output-canvas" class="w-full h-full object-cover"></canvas>
+            </div>
+
+            <!-- UI Overlay -->
+            <div class="absolute inset-0 w-full h-full flex z-10">
+                <!-- Zones - Added onclick and class answer-zone -->
+                <div class="flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-0" onclick="handleZoneClick(0)">
+                    <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
+                        <div class="w-full bg-gradient-to-t from-red-600 to-red-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
+                    </div>
+                    <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.4)] border-8 border-red-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
+                        <span class="text-xl font-bold text-slate-900 option-text text-fit">A</span>
+                    </div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ก</div>
+                </div>
+
+                <div class="flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-1" onclick="handleZoneClick(1)">
+                    <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
+                        <div class="w-full bg-gradient-to-t from-blue-600 to-blue-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
+                    </div>
+                    <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)] border-8 border-blue-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
+                        <span class="text-xl font-bold text-slate-900 option-text text-fit">B</span>
+                    </div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ข</div>
+                </div>
+
+                <div class="flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-2" onclick="handleZoneClick(2)">
+                    <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
+                        <div class="w-full bg-gradient-to-t from-yellow-500 to-yellow-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
+                    </div>
+                    <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(234,179,8,0.4)] border-8 border-yellow-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
+                        <span class="text-xl font-bold text-slate-900 option-text text-fit">C</span>
+                    </div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ค</div>
+                </div>
+
+                <div class="flex-1 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-3" onclick="handleZoneClick(3)">
+                    <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
+                        <div class="w-full bg-gradient-to-t from-green-600 to-green-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
+                    </div>
+                    <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(22,163,74,0.4)] border-8 border-green-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
+                        <span class="text-xl font-bold text-slate-900 option-text text-fit">D</span>
+                    </div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ง</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Screen -->
+    <div id="summary-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-b from-purple-900 to-indigo-900 hidden">
+        <canvas id="confetti-canvas"></canvas>
+        
+        <div class="z-10 w-full max-w-2xl bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl flex flex-col items-center p-12 relative animate-float">
+            <h2 class="text-4xl font-bold text-yellow-300 mb-6 drop-shadow-lg">จบเกม!</h2>
+            
+            <div class="text-center mb-8">
+                <span class="text-lg text-indigo-200 block mb-2">คะแนนรวมของคุณ</span>
+                <div class="flex items-baseline justify-center gap-2">
+                    <span class="text-8xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" id="final-score">0</span>
+                    <span class="text-3xl text-white/60" id="total-score-label">/ 10</span>
+                </div>
+            </div>
+            
+            <div class="flex gap-4">
+                <!-- Added onclick -->
+                <div id="btn-home" onclick="showMenu()" class="interactive-btn px-8 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-xl font-bold shadow-lg transition transform border-2 border-transparent relative overflow-hidden cursor-pointer">
+                    🏠 กลับหน้าหลัก
+                    <div class="absolute bottom-0 left-0 h-2 bg-yellow-400 transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Floating Hand Cursor (Global) -->
+    <div id="hand-cursor" class="hand-cursor-container hidden pointer-events-none">
+        <svg class="progress-ring" width="120" height="120">
+           <circle stroke="rgba(255,255,255,0.2)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
+           <circle id="cursor-progress" class="progress-ring__circle" stroke="#EF4444" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"
+                   stroke-dasharray="314" stroke-dashoffset="314"/>
+        </svg>
+        <div class="hand-icon"></div>
+    </div>
+
+    <script>
+        // --- Game Config ---
+        const CONFIG = {
+            selectionThreshold: 3000, // 3 วินาที
+        };
+
+        const QUESTIONS = {
+            easy: [
+                {q: "สัตว์ชนิดใดร้อง 'เมี๊ยว'?", options: ["แมว", "สุนัข", "ไก่", "หมู"], a: "แมว"},
+                {q: "สีประจำวันอาทิตย์คือสีอะไร?", options: ["แดง", "เหลือง", "ชมพู", "เขียว"], a: "แดง"},
+                {q: "ผลไม้อะไรมีหนาม?", options: ["ทุเรียน", "ส้ม", "แอปเปิ้ล", "กล้วย"], a: "ทุเรียน"},
+                {q: "เราใช้ส่วนใดของร่างกายในการดู?", options: ["ตา", "หู", "จมูก", "ปาก"], a: "ตา"},
+                {q: "พระอาทิตย์ขึ้นทางทิศไหน?", options: ["ตะวันออก", "ตะวันตก", "เหนือ", "ใต้"], a: "ตะวันออก"},
+                {q: "สัตว์ใดอยู่ในน้ำ?", options: ["ปลา", "นก", "ลิง", "ช้าง"], a: "ปลา"},
+                {q: "รถไฟวิ่งบนอะไร?", options: ["ราง", "ถนน", "แม่น้ำ", "ท้องฟ้า"], a: "ราง"},
+                {q: "1 ปี มีกี่เดือน?", options: ["12", "10", "6", "8"], a: "12"},
+                {q: "ธงชาติไทยมีกี่สี?", options: ["3", "2", "4", "5"], a: "3"},
+                {q: "ใครทำหน้าที่รักษาคนป่วย?", options: ["หมอ", "ครู", "ทหาร", "ตำรวจ"], a: "หมอ"}
+            ],
+            medium: [
+                {q: "จังหวัดเชียงใหม่อยู่ภาคไหน?", options: ["เหนือ", "ใต้", "กลาง", "อีสาน"], a: "เหนือ"},
+                {q: "น้ำแข็งทำมาจากอะไร?", options: ["น้ำ", "ไฟ", "ดิน", "ลม"], a: "น้ำ"},
+                {q: "ใครแต่งเรื่องพระอภัยมณี?", options: ["สุนทรภู่", "ร.2", "นายขนมต้ม", "ครูเอื้อ"], a: "สุนทรภู่"},
+                {q: "สัตว์ประจำชาติไทยคืออะไร?", options: ["ช้าง", "เสือ", "ม้า", "วัว"], a: "ช้าง"},
+                {q: "ดวงอาทิตย์เป็นดาวฤกษ์หรือดาวเคราะห์?", options: ["ดาวฤกษ์", "ดาวเคราะห์", "ดาวหาง", "อุกกาบาต"], a: "ดาวฤกษ์"},
+                {q: "ภาคใต้ติดกับทะเลฝั่งใด?", options: ["อันดามัน", "แปซิฟิก", "แอตแลนติก", "แดง"], a: "อันดามัน"},
+                {q: "ไดโนเสาร์สูญพันธุ์ไปกี่ปีแล้ว?", options: ["ล้านปี", "ร้อยปี", "สิบปี", "เมื่อวาน"], a: "ล้านปี"},
+                {q: "กบเป็นสัตว์ประเภทใด?", options: ["ครึ่งบกครึ่งน้ำ", "สัตว์ปีก", "สัตว์เลี้ยงลูกด้วยนม", "แมลง"], a: "ครึ่งบกครึ่งน้ำ"},
+                {q: "เดือนกุมภาพันธ์มีกี่วัน (ปีปกติ)?", options: ["28", "30", "31", "25"], a: "28"},
+                {q: "ข้าวหอมมะลิขึ้นชื่อของภาคใด?", options: ["อีสาน", "ใต้", "ตะวันออก", "ตก"], a: "อีสาน"}
+            ],
+            hard: [
+                {q: "อาณาจักรแรกของไทยคือ?", options: ["สุโขทัย", "อยุธยา", "ธนบุรี", "รัตนโกสินทร์"], a: "สุโขทัย"},
+                {q: "แม่น้ำเจ้าพระยาไหลลงสู่อ่าวใด?", options: ["อ่าวไทย", "อันดามัน", "เบงกอล", "ตังเกี๋ย"], a: "อ่าวไทย"},
+                {q: "ใครประดิษฐ์อักษรไทย?", options: ["พ่อขุนรามคำแหง", "ร.5", "สมเด็จพระนารายณ์", "พระเจ้าตาก"], a: "พ่อขุนรามคำแหง"},
+                {q: "ดาวเคราะห์ที่ใหญ่ที่สุดคือ?", options: ["พฤหัสบดี", "โลก", "อังคาร", "เสาร์"], a: "พฤหัสบดี"},
+                {q: "ก๊าซที่คนใช้หายใจเข้าคือ?", options: ["ออกซิเจน", "คาร์บอน", "ไนโตรเจน", "ฮีเลียม"], a: "ออกซิเจน"},
+                {q: "วันเลิกทาสตรงกับรัชกาลใด?", options: ["ร.5", "ร.4", "ร.6", "ร.9"], a: "ร.5"},
+                {q: "ประเทศเพื่อนบ้านทิศใต้ของไทยคือ?", options: ["มาเลเซีย", "ลาว", "พม่า", "กัมพูชา"], a: "มาเลเซีย"},
+                {q: "อุทยานประวัติศาสตร์อยุธยาเป็นมรดกโลกไหม?", options: ["เป็น", "ไม่เป็น", "กำลังขอ", "ยกเลิกแล้ว"], a: "เป็น"},
+                {q: "สัตว์เลี้ยงลูกด้วยนมที่บินได้คือ?", options: ["ค้างคาว", "นกกระจอกเทศ", "เพนกวิน", "ไก่"], a: "ค้างคาว"},
+                {q: "น้ำเดือดที่อุณหภูมิกี่องศาเซลเซียส?", options: ["100", "50", "0", "80"], a: "100"}
+            ]
+        };
+
+        // --- State ---
+        let state = {
+            step: 'LOAD', 
+            score: 0,
+            difficulty: 'easy',
+            questionQueue: [],
+            totalQuestions: 0,
+            currentQuestionIndex: 0,
+            currentQ: null,
+            canAnswer: false,
+            zoneTimers: [0, 0, 0, 0],
+            menuTimers: {}, 
+            audioCtx: null,
+            hands: null,
+            isHandDetected: false,
+            cursorX: 0,
+            cursorY: 0,
+        };
+
+        // --- Elements ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const cursorElement = document.getElementById('hand-cursor');
+        const cursorProgressCircle = document.getElementById('cursor-progress');
+        const cursorRadius = cursorProgressCircle.r.baseVal.value;
+        const cursorCircumference = cursorRadius * 2 * Math.PI;
+
+        cursorProgressCircle.style.strokeDasharray = `${cursorCircumference} ${cursorCircumference}`;
+        cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+
+        // --- Helper ---
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // --- Audio ---
+        function initAudio() {
+            if(state.audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            state.audioCtx = new AudioContext();
+        }
+
+        function playSound(type) {
+            if (!state.audioCtx) initAudio();
+            const ctx = state.audioCtx;
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            const now = ctx.currentTime;
+
+            if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now); 
+                osc.frequency.setValueAtTime(880.00, now + 0.1); 
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.3);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'hover') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(440, now);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'click') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            }
+        }
+
+        function speak(text) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- Logic ---
+        function showMenu() {
+            state.step = 'MENU';
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('menu-screen').classList.remove('hidden');
+            document.getElementById('menu-screen').classList.add('flex');
+            document.getElementById('summary-screen').classList.add('hidden');
+            
+            // Reset timers
+            state.menuTimers = {};
+            document.querySelectorAll('.loading-bar').forEach(el => el.style.width = '0%');
+        }
+
+        function startGame(level) {
+            initAudio();
+            playSound('click');
+            
+            state.difficulty = level;
+            state.score = 0;
+            state.step = 'PLAY';
+            state.currentQuestionIndex = 0;
+
+            let rawQuestions = [...QUESTIONS[level]];
+            if (level === 'easy') state.totalQuestions = 10;
+            else if (level === 'medium') state.totalQuestions = 20;
+            else if (level === 'hard') state.totalQuestions = 30;
+
+            let pool = [];
+            while(pool.length < state.totalQuestions) {
+                let batch = shuffleArray([...rawQuestions]);
+                pool = pool.concat(batch);
+            }
+            state.questionQueue = pool.slice(0, state.totalQuestions);
+
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('menu-screen').classList.remove('flex');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('game-screen').classList.add('flex');
+            document.getElementById('score-display').innerText = "0";
+            
+            nextQuestion();
+        }
+
+        function nextQuestion() {
+            if (state.currentQuestionIndex >= state.totalQuestions) {
+                endGame();
+                return;
+            }
+
+            state.currentQuestionIndex++;
+            state.canAnswer = false;
+            state.zoneTimers = [0,0,0,0];
+            updateProgressBars();
+            
+            document.getElementById('progress-display').innerText = `${state.currentQuestionIndex}/${state.totalQuestions}`;
+
+            let qData = state.questionQueue[state.currentQuestionIndex - 1];
+            let displayOptions = shuffleArray([...qData.options]);
+            
+            state.currentQ = {
+                ...qData,
+                displayOptions: displayOptions
+            };
+
+            document.getElementById('question-display').innerText = state.currentQ.q;
+            
+            state.currentQ.displayOptions.forEach((opt, idx) => {
+                document.querySelector(`#zone-${idx} .option-text`).innerText = opt;
+                const bg = document.querySelector(`#zone-${idx} .option-bg`);
+                bg.className = `w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-2xl border-8 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95 ${['border-red-500','border-blue-500','border-yellow-500','border-green-500'][idx]}`;
+                bg.classList.remove('scale-125', 'bg-green-100', 'bg-red-100');
+            });
+
+            speak(state.currentQ.q);
+            setTimeout(() => { state.canAnswer = true; }, 1000);
+        }
+
+        // New function to handle manual clicks on answers
+        function handleZoneClick(idx) {
+            // Only allow clicking if in PLAY state and answering is enabled
+            if (state.step === 'PLAY' && state.canAnswer) {
+                checkAnswer(idx);
+            }
+        }
+
+        function checkAnswer(idx) {
+            state.canAnswer = false;
+            const selectedAnswer = state.currentQ.displayOptions[idx];
+            const isCorrect = selectedAnswer === state.currentQ.a;
+            
+            if (isCorrect) {
+                state.score++;
+                playSound('correct');
+                document.getElementById('score-display').innerText = state.score;
+                document.querySelector(`#zone-${idx} .option-bg`).classList.add('scale-125', 'bg-green-100');
+                speak("ถูกต้อง");
+            } else {
+                playSound('wrong');
+                document.querySelector(`#zone-${idx} .option-bg`).classList.add('bg-red-100');
+                const correctIdx = state.currentQ.displayOptions.indexOf(state.currentQ.a);
+                document.querySelector(`#zone-${correctIdx} .option-bg`).classList.add('scale-125', 'bg-green-100');
+                speak("ผิดครับ");
+            }
+            setTimeout(nextQuestion, 2000);
+        }
+
+        function endGame() {
+            state.step = 'SUMMARY';
+            playSound('click');
+            
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('flex');
+            document.getElementById('summary-screen').classList.remove('hidden');
+            document.getElementById('summary-screen').classList.add('flex');
+            
+            document.getElementById('final-score').innerText = state.score;
+            document.getElementById('total-score-label').innerText = `/ ${state.totalQuestions}`;
+            
+            let percent = (state.score / state.totalQuestions) * 100;
+            let msg = "";
+            if(percent >= 80) msg = "เก่งยอดเยี่ยม!";
+            else if(percent >= 50) msg = "ทำได้ดีมาก!";
+            else msg = "สู้ๆ นะครับ!";
+            
+            speak(`จบเกมครับ คุณได้ ${state.score} คะแนน ${msg}`);
+            startConfetti();
+        }
+
+        // --- Interaction Logic (Motion) ---
+        function isCursorOverElement(x, y, element) {
+            const rect = element.getBoundingClientRect();
+            return (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
+        }
+
+        function processMenuInteraction(x, y) {
+            const buttons = document.querySelectorAll('.interactive-btn');
+            let isHoveringAny = false;
+            let maxTimer = 0;
+
+            buttons.forEach(btn => {
+                if (btn.offsetParent === null) return; // Skip hidden buttons
+
+                const btnId = btn.id || btn.innerText;
+                if (!state.menuTimers[btnId]) state.menuTimers[btnId] = 0;
+
+                if (isCursorOverElement(x, y, btn)) {
+                    isHoveringAny = true;
+                    btn.classList.add('hover-active');
+                    state.menuTimers[btnId] += 50; 
+                    
+                    if (state.menuTimers[btnId] % 500 < 50) playSound('hover');
+
+                    const bar = btn.querySelector('.loading-bar');
+                    if (bar) {
+                        const pct = Math.min(100, (state.menuTimers[btnId] / CONFIG.selectionThreshold) * 100);
+                        bar.style.width = `${pct}%`;
+                    }
+
+                    if (state.menuTimers[btnId] > maxTimer) maxTimer = state.menuTimers[btnId];
+
+                    if (state.menuTimers[btnId] >= CONFIG.selectionThreshold) {
+                        state.menuTimers[btnId] = 0;
+                        if(bar) bar.style.width = '0%';
+                        btn.classList.remove('hover-active');
+                        
+                        if (btn.id === 'btn-easy') startGame('easy');
+                        else if (btn.id === 'btn-medium') startGame('medium');
+                        else if (btn.id === 'btn-hard') startGame('hard');
+                        else if (btn.id === 'btn-quit') endGame(); 
+                        else if (btn.id === 'btn-home') showMenu(); 
+                    }
+
+                } else {
+                    btn.classList.remove('hover-active');
+                    state.menuTimers[btnId] = Math.max(0, state.menuTimers[btnId] - 100);
+                    const bar = btn.querySelector('.loading-bar');
+                    if (bar) bar.style.width = `${(state.menuTimers[btnId] / CONFIG.selectionThreshold) * 100}%`;
+                }
+            });
+
+            const pct = Math.min(1, maxTimer / CONFIG.selectionThreshold);
+            const offset = cursorCircumference - (pct * cursorCircumference);
+            cursorProgressCircle.style.strokeDashoffset = offset;
+        }
+
+        // --- MediaPipe ---
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                state.isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+                const handPoint = landmarks[9]; 
+                
+                const vx = (1 - handPoint.x) * window.innerWidth;
+                const vy = handPoint.y * window.innerHeight;
+
+                state.cursorX = vx;
+                state.cursorY = vy;
+
+                cursorElement.classList.remove('hidden');
+                cursorElement.style.left = `${vx}px`; 
+                cursorElement.style.top = `${vy}px`;
+
+                if (state.step === 'PLAY' && state.canAnswer) {
+                    processZoneInteraction(vx, vy);
+                    processMenuInteraction(vx, vy); 
+                } else if (state.step === 'MENU' || state.step === 'SUMMARY') {
+                    processMenuInteraction(vx, vy);
+                }
+
+            } else {
+                state.isHandDetected = false;
+                cursorElement.classList.add('hidden');
+                if(state.step === 'PLAY') {
+                    state.zoneTimers = state.zoneTimers.map(t => Math.max(0, t - 50));
+                    updateProgressBars();
+                }
+                Object.keys(state.menuTimers).forEach(k => {
+                    state.menuTimers[k] = 0;
+                });
+                cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+            }
+            canvasCtx.restore();
+        }
+
+        function processZoneInteraction(x, y) {
+            if (y < window.innerHeight * 0.2) return; 
+
+            const width = window.innerWidth;
+            const zoneW = width / 4;
+            const currentZone = Math.floor(x / zoneW);
+            let maxTimer = 0;
+
+            for(let i=0; i<4; i++) {
+                if(i === currentZone) {
+                    state.zoneTimers[i] += 50; 
+                    if (state.zoneTimers[i] % 800 < 50) playSound('hover');
+                } else {
+                    state.zoneTimers[i] = Math.max(0, state.zoneTimers[i] - 100);
+                }
+                if (state.zoneTimers[i] > maxTimer) maxTimer = state.zoneTimers[i];
+            }
+            updateProgressBars(maxTimer);
+            if(state.zoneTimers[currentZone] >= CONFIG.selectionThreshold) {
+                checkAnswer(currentZone);
+            }
+        }
+
+        function updateProgressBars(maxTimer) {
+            state.zoneTimers.forEach((t, i) => {
+                const pct = Math.min(100, (t / CONFIG.selectionThreshold) * 100);
+                const bar = document.querySelector(`#zone-${i} .progress-fill`);
+                if(bar) bar.style.height = `${pct}%`;
+            });
+            
+            if (maxTimer !== undefined) {
+                const pct = Math.min(1, maxTimer / CONFIG.selectionThreshold);
+                const offset = cursorCircumference - (pct * cursorCircumference);
+                cursorProgressCircle.style.strokeDashoffset = offset;
+            }
+        }
+
+        // --- Init ---
+        async function init() {
+            const video = document.getElementById('webcam');
+            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onResults);
+            state.hands = hands;
+
+            const camera = new Camera(video, {
+                onFrame: async () => { await hands.send({image: video}); },
+                width: 640,
+                height: 480
+            });
+
+            try {
+                await camera.start();
+                setTimeout(showMenu, 1500);
+            } catch (e) {
+                console.error(e);
+                document.getElementById('loading-status').innerText = "เกิดข้อผิดพลาด: ไม่สามารถเปิดกล้องได้";
+            }
+        }
+        
+        function startConfetti() {
+            const canvas = document.getElementById('confetti-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const pieces = Array.from({length: 100}).map(() => ({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height - canvas.height,
+                color: `hsl(${Math.random()*360}, 100%, 50%)`,
+                size: Math.random() * 10 + 5,
+                speed: Math.random() * 5 + 3
+            }));
+            function loop() {
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                pieces.forEach(p => {
+                    ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size);
+                    p.y += p.speed;
+                    if(p.y > canvas.height) p.y = -20;
+                });
+                if(state.step === 'SUMMARY') requestAnimationFrame(loop);
+            }
+            loop();
+        }
+
+        window.onload = init;
+
+    </script>
+</body>
+</html>
