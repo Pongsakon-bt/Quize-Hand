@@ -1,8 +1,9 @@
 <!-- 
 === คู่มือการใช้งาน (Teacher's Guide) ===
-- ระบบ Hybrid Control: รองรับทั้ง 2 วิธีพร้อมกัน
-  1. Motion Hand: ยกมือจ่อค้าง 3 วินาที (วงแดงหมุน)
-  2. Click/Touch: ใช้เมาส์คลิก หรือนิ้วแตะที่ปุ่มเพื่อสั่งงานทันที
+- โหมดมือ (Hand): ยกมือจ่อค้าง 2.5 วินาที
+- โหมดนับนิ้ว (Finger): ชู 1, 2, 3 หรือ 4 นิ้วค้างไว้ (มีตัวเลข 1-4 โชว์ลอยอยู่บนมือ)
+- โหมดลำตัว (Body): แบ่งจอ 4 ช่องแนวตั้ง โยกตัวซ้าย-ขวาไปในช่องที่ต้องการ (ช่องจะสว่างขึ้นตามสีคำตอบ)
+- เวลาหน่วง 2.5 วินาที: ใช้ระบบ Real-Time Clock รับประกันเวลาเท่ากันเป๊ะในทุกอุปกรณ์
 -->
 
 <!DOCTYPE html>
@@ -10,7 +11,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>เกมความรู้รอบตัว: Motion & Click Control</title>
+    <title>เกมความรู้รอบตัว: 3 Smart Modes (Precise Timing)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;800&display=swap" rel="stylesheet">
     
@@ -19,14 +20,13 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
     <style>
         body { font-family: 'Kanit', sans-serif; overflow: hidden; background-color: #0f172a; }
         
         /* Mirror the video container */
-        .mirror-mode {
-            transform: scaleX(-1);
-        }
+        .mirror-mode { transform: scaleX(-1); }
 
         @keyframes float {
             0% { transform: translateY(0px); }
@@ -35,71 +35,42 @@
         }
         .animate-float { animation: float 3s ease-in-out infinite; }
         
-        .progress-fill {
-            transition: height 0.1s linear;
-        }
+        .progress-fill { transition: height 0.1s linear; }
 
         #confetti-canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 60;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 60;
         }
 
         /* Custom Cursor Style */
         .hand-cursor-container {
-            position: absolute;
-            width: 120px;
-            height: 120px;
-            pointer-events: none;
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transform: translate(-50%, -50%);
-            transition: left 0.1s ease-out, top 0.1s ease-out;
+            position: absolute; width: 120px; height: 120px; pointer-events: none; z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            transform: translate(-50%, -50%); transition: left 0.1s ease-out, top 0.1s ease-out;
         }
 
         .hand-icon {
-            width: 60px;
-            height: 60px;
+            width: 60px; height: 60px;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23EF4444' stroke='%23FFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0'%3E%3C/path%3E%3Cpath d='M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2'%3E%3C/path%3E%3Cpath d='M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8'%3E%3C/path%3E%3Cpath d='M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'%3E%3C/path%3E%3C/svg%3E");
-            background-size: cover;
-            filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.8));
-            position: absolute;
+            background-size: cover; filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.8)); position: absolute;
+            transition: all 0.2s;
         }
 
         .progress-ring__circle {
-            transition: stroke-dashoffset 0.1s linear;
-            transform: rotate(-90deg);
-            transform-origin: 50% 50%;
-            stroke: #EF4444;
+            transition: stroke-dashoffset 0.1s linear; transform: rotate(-90deg); transform-origin: 50% 50%; stroke: #EF4444;
         }
 
         .hover-active {
-            transform: scale(1.05);
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-            border-color: #EF4444 !important;
+            transform: scale(1.05); box-shadow: 0 0 20px rgba(255, 255, 255, 0.5); border-color: #EF4444 !important;
         }
 
         .tube-container {
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 10px 10px 0 0;
-            backdrop-filter: blur(4px);
+            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px 10px 0 0; backdrop-filter: blur(4px);
         }
         
-        .text-fit {
-            font-size: clamp(1rem, 2vw, 1.5rem);
-            line-height: 1.1;
-        }
+        .text-fit { font-size: clamp(1rem, 2vw, 1.5rem); line-height: 1.1; }
 
-        /* เพิ่ม Cursor Pointer เมื่อเอาเมาส์ไปชี้ปุ่ม */
-        .interactive-btn { cursor: pointer; }
-        .answer-zone { cursor: pointer; }
+        .interactive-btn, .answer-zone { cursor: pointer; }
     </style>
 </head>
 <body class="h-screen w-screen flex flex-col items-center justify-center relative text-white bg-slate-900">
@@ -107,35 +78,73 @@
     <!-- Loading Screen -->
     <div id="loading-screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-indigo-900 text-white">
         <div class="animate-spin rounded-full h-32 w-32 border-b-4 border-red-500 mb-8"></div>
-        <h1 class="text-4xl font-bold mb-4">กำลังเตรียมระบบ...</h1>
-        <p class="text-xl text-indigo-200">กรุณาเปิดกล้องและยกมือขึ้น 👋</p>
-        <div id="loading-status" class="mt-4 text-sm text-indigo-300">Initializing MediaPipe Hands...</div>
+        <h1 class="text-4xl font-bold mb-4">กำลังเตรียมระบบ AI...</h1>
+        <p class="text-xl text-indigo-200">กรุณาเปิดกล้องและรอสักครู่</p>
+        <div id="loading-status" class="mt-4 text-sm text-indigo-300">Loading AI Models...</div>
     </div>
 
-    <!-- Main Menu -->
-    <div id="menu-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 hidden">
+    <!-- Mode Select Screen -->
+    <div id="mode-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 hidden">
         <div class="text-center animate-float mb-8">
             <h1 class="text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-500 drop-shadow-lg mb-4">Quiz Game</h1>
-            <h2 class="text-3xl font-bold text-white drop-shadow-md">✋ ยกมือค้าง 3 วิ หรือ 🖱️ คลิกเพื่อเริ่ม</h2>
+            <h2 class="text-3xl font-bold text-white drop-shadow-md">เลือกระบบการควบคุมเกม</h2>
         </div>
         
         <div class="bg-white/10 p-8 rounded-3xl backdrop-blur-md border border-white/20 max-w-5xl w-full text-center shadow-2xl">
-            <p class="text-2xl text-yellow-300 mb-6 font-bold">เลือกระดับความท้าทาย</p>
+            <p class="text-2xl text-yellow-300 mb-6 font-bold">โหมดการเล่น (Play Mode)</p>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <!-- Added onclick events -->
+                <div id="btn-mode-hand" onclick="selectMode('hand')" class="interactive-btn group relative p-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
+                    <div class="text-4xl mb-2">👋</div>
+                    <div class="text-2xl font-bold">โหมดมือ</div>
+                    <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">ใช้มือเลื่อนไปจ่อ 2.5 วิ</div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+
+                <div id="btn-mode-finger" onclick="selectMode('finger')" class="interactive-btn group relative p-6 bg-gradient-to-br from-pink-500 to-rose-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
+                    <div class="text-4xl mb-2">✌️</div>
+                    <div class="text-2xl font-bold">โหมดใช้นิ้ว</div>
+                    <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">ชู 1, 2, 3 หรือ 4 นิ้ว</div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+
+                <div id="btn-mode-body" onclick="selectMode('body')" class="interactive-btn group relative p-6 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
+                    <div class="text-4xl mb-2">🕺</div>
+                    <div class="text-2xl font-bold">โหมดลำตัว</div>
+                    <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">ขยับตัวเข้า 4 ช่องแนวตั้ง</div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Difficulty Menu -->
+    <div id="difficulty-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 hidden">
+        <div class="text-center animate-float mb-8">
+            <h1 class="text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-500 drop-shadow-lg mb-4">เลือกระดับ</h1>
+            <h2 class="text-2xl font-bold text-white drop-shadow-md">จอแดงหมุน 2.5 วิ เพื่อยืนยัน</h2>
+        </div>
+        
+        <div class="bg-white/10 p-8 rounded-3xl backdrop-blur-md border border-white/20 max-w-5xl w-full text-center shadow-2xl relative">
+            <button onclick="showModeSelect()" class="absolute top-4 left-4 text-white/70 hover:text-white transition bg-white/10 px-4 py-2 rounded-lg font-bold z-10">
+                ◀ กลับ
+            </button>
+
+            <p class="text-2xl text-yellow-300 mb-6 font-bold mt-4">เลือกระดับความท้าทาย</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div id="btn-easy" onclick="startGame('easy')" class="interactive-btn group relative p-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
                     <div class="text-4xl mb-2">🌱</div>
                     <div class="text-2xl font-bold">ง่าย</div>
                     <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">จำนวน 10 ข้อ</div>
-                    <div class="absolute bottom-0 left-0 h-2 bg-red-500 transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
                 </div>
 
                 <div id="btn-medium" onclick="startGame('medium')" class="interactive-btn group relative p-6 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
                     <div class="text-4xl mb-2">⚡</div>
                     <div class="text-2xl font-bold">ปานกลาง</div>
                     <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">จำนวน 20 ข้อ</div>
-                    <div class="absolute bottom-0 left-0 h-2 bg-red-500 transition-all duration-100 ease-linear w-0 loading-bar"></div>
+                    <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
                 </div>
 
                 <div id="btn-hard" onclick="startGame('hard')" class="interactive-btn group relative p-6 bg-gradient-to-br from-red-500 to-rose-700 rounded-2xl transition shadow-lg border-4 border-transparent hover:scale-105 active:scale-95">
@@ -144,11 +153,6 @@
                     <div class="text-sm opacity-90 mt-2 bg-black/20 rounded-full py-1">จำนวน 30 ข้อ</div>
                     <div class="absolute bottom-0 left-0 h-2 bg-white transition-all duration-100 ease-linear w-0 loading-bar"></div>
                 </div>
-            </div>
-
-            <div class="text-sm text-gray-300">
-                <span class="mr-4">📷 เปิดกล้อง</span>
-                <span class="mr-4">⏳ จ่อค้าง 3 วินาที (วงแดง) หรือ คลิกเพื่อเลือก</span>
             </div>
         </div>
     </div>
@@ -170,9 +174,8 @@
 
             <div class="flex flex-col items-end w-48">
                 <div class="flex items-center gap-3 mb-1">
-                    <!-- Added onclick -->
                     <div id="btn-quit" onclick="endGame()" class="interactive-btn px-4 py-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm rounded-lg transition border-2 border-transparent relative overflow-hidden cursor-pointer">
-                        <span class="relative z-10">เลิกเล่น (สรุปผล)</span>
+                        <span class="relative z-10">เลิกเล่น</span>
                         <div class="absolute bottom-0 left-0 h-1 bg-white transition-all duration-100 ease-linear w-0 loading-bar rounded-b-lg"></div>
                     </div>
                 </div>
@@ -187,52 +190,59 @@
         <div class="flex-1 relative overflow-hidden bg-black w-full">
             <video id="webcam" class="hidden" autoplay playsinline></video>
             
+            <!-- Canvas for Drawing MediaPipe Results -->
             <div class="absolute inset-0 w-full h-full mirror-mode">
-                <canvas id="output-canvas" class="w-full h-full object-cover"></canvas>
+                <canvas id="output-canvas" class="w-full h-full object-cover opacity-80"></canvas>
             </div>
 
-            <!-- UI Overlay -->
-            <div class="absolute inset-0 w-full h-full flex z-10">
-                <!-- Zones - Added onclick and class answer-zone -->
-                <div class="flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-0" onclick="handleZoneClick(0)">
+            <!-- Finger Mode Indicator (Top Info) -->
+            <div id="finger-indicator" class="absolute top-8 left-1/2 transform -translate-x-1/2 bg-black/60 border border-white/30 text-white px-8 py-3 rounded-full font-bold text-3xl hidden z-50 shadow-2xl backdrop-blur">
+                เซ็นเซอร์นิ้ว: <span id="finger-count" class="text-yellow-400 mx-2">0</span> นิ้ว
+            </div>
+
+            <!-- Zones Container (Layout changes dynamically) -->
+            <div id="zones-container" class="absolute inset-0 w-full h-full flex z-10 pointer-events-none">
+                
+                <div id="zone-0" class="answer-zone flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group pointer-events-auto" onclick="handleZoneClick(0)">
                     <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
                         <div class="w-full bg-gradient-to-t from-red-600 to-red-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
                     </div>
                     <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(220,38,38,0.4)] border-8 border-red-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
                         <span class="text-xl font-bold text-slate-900 option-text text-fit">A</span>
                     </div>
-                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ก</div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-6 py-2 rounded-full text-white text-2xl font-bold border border-white/20 z-20 label-text">1 (ก)</div>
                 </div>
 
-                <div class="flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-1" onclick="handleZoneClick(1)">
+                <div id="zone-1" class="answer-zone flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group pointer-events-auto" onclick="handleZoneClick(1)">
                     <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
                         <div class="w-full bg-gradient-to-t from-blue-600 to-blue-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
                     </div>
                     <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)] border-8 border-blue-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
                         <span class="text-xl font-bold text-slate-900 option-text text-fit">B</span>
                     </div>
-                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ข</div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-6 py-2 rounded-full text-white text-2xl font-bold border border-white/20 z-20 label-text">2 (ข)</div>
                 </div>
 
-                <div class="flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-2" onclick="handleZoneClick(2)">
+                <div id="zone-2" class="answer-zone flex-1 border-r border-white/10 relative flex flex-col justify-end pb-12 items-center group pointer-events-auto" onclick="handleZoneClick(2)">
                     <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
                         <div class="w-full bg-gradient-to-t from-yellow-500 to-yellow-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
                     </div>
                     <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(234,179,8,0.4)] border-8 border-yellow-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
                         <span class="text-xl font-bold text-slate-900 option-text text-fit">C</span>
                     </div>
-                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ค</div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-6 py-2 rounded-full text-white text-2xl font-bold border border-white/20 z-20 label-text">3 (ค)</div>
                 </div>
 
-                <div class="flex-1 relative flex flex-col justify-end pb-12 items-center group answer-zone" id="zone-3" onclick="handleZoneClick(3)">
+                <div id="zone-3" class="answer-zone flex-1 relative flex flex-col justify-end pb-12 items-center group pointer-events-auto" onclick="handleZoneClick(3)">
                     <div class="w-full h-full absolute bottom-0 tube-container pointer-events-none">
                         <div class="w-full bg-gradient-to-t from-green-600 to-green-400/80 absolute bottom-0 progress-fill" style="height: 0%"></div>
                     </div>
                     <div class="w-36 h-36 bg-white rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(22,163,74,0.4)] border-8 border-green-500 z-10 option-bg relative transform transition duration-200 px-2 text-center group-hover:scale-105 group-active:scale-95">
                         <span class="text-xl font-bold text-slate-900 option-text text-fit">D</span>
                     </div>
-                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-4 py-1 rounded-full text-white text-xl font-bold border border-white/20 z-20">ง</div>
+                    <div class="mt-4 bg-slate-900/80 backdrop-blur px-6 py-2 rounded-full text-white text-2xl font-bold border border-white/20 z-20 label-text">4 (ง)</div>
                 </div>
+
             </div>
         </div>
     </div>
@@ -240,10 +250,8 @@
     <!-- Summary Screen -->
     <div id="summary-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center bg-gradient-to-b from-purple-900 to-indigo-900 hidden">
         <canvas id="confetti-canvas"></canvas>
-        
         <div class="z-10 w-full max-w-2xl bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl flex flex-col items-center p-12 relative animate-float">
             <h2 class="text-4xl font-bold text-yellow-300 mb-6 drop-shadow-lg">จบเกม!</h2>
-            
             <div class="text-center mb-8">
                 <span class="text-lg text-indigo-200 block mb-2">คะแนนรวมของคุณ</span>
                 <div class="flex items-baseline justify-center gap-2">
@@ -251,10 +259,8 @@
                     <span class="text-3xl text-white/60" id="total-score-label">/ 10</span>
                 </div>
             </div>
-            
             <div class="flex gap-4">
-                <!-- Added onclick -->
-                <div id="btn-home" onclick="showMenu()" class="interactive-btn px-8 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-xl font-bold shadow-lg transition transform border-2 border-transparent relative overflow-hidden cursor-pointer">
+                <div id="btn-home" onclick="showModeSelect()" class="interactive-btn px-8 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full text-xl font-bold shadow-lg transition transform border-2 border-transparent relative overflow-hidden cursor-pointer">
                     🏠 กลับหน้าหลัก
                     <div class="absolute bottom-0 left-0 h-2 bg-yellow-400 transition-all duration-100 ease-linear w-0 loading-bar"></div>
                 </div>
@@ -262,7 +268,7 @@
         </div>
     </div>
     
-    <!-- Floating Hand Cursor (Global) -->
+    <!-- Floating Cursor (Used ONLY for Menu and Hand Mode) -->
     <div id="hand-cursor" class="hand-cursor-container hidden pointer-events-none">
         <svg class="progress-ring" width="120" height="120">
            <circle stroke="rgba(255,255,255,0.2)" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
@@ -275,7 +281,7 @@
     <script>
         // --- Game Config ---
         const CONFIG = {
-            selectionThreshold: 3000, // 3 วินาที
+            selectionThreshold: 2500, // ดีเลย์ 2.5 วินาที เป๊ะทุกอุปกรณ์
         };
 
         const QUESTIONS = {
@@ -320,6 +326,7 @@
         // --- State ---
         let state = {
             step: 'LOAD', 
+            mode: 'hand', // 'hand', 'finger', 'body'
             score: 0,
             difficulty: 'easy',
             questionQueue: [],
@@ -327,13 +334,22 @@
             currentQuestionIndex: 0,
             currentQ: null,
             canAnswer: false,
-            zoneTimers: [0, 0, 0, 0],
-            menuTimers: {}, 
             audioCtx: null,
             hands: null,
-            isHandDetected: false,
+            pose: null,
             cursorX: 0,
             cursorY: 0,
+            bodyX: null,
+            bodyY: null,
+            detectedFingers: 0
+        };
+
+        // --- Interaction Time State (Frame-rate independent) ---
+        let interactionState = {
+            currentZone: -1,
+            zoneStartTime: 0,
+            currentMenuBtn: null,
+            menuStartTime: 0
         };
 
         // --- Elements ---
@@ -357,6 +373,13 @@
             return array;
         }
 
+        function hideAllScreens() {
+            ['loading-screen', 'mode-screen', 'difficulty-screen', 'game-screen', 'summary-screen'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+                document.getElementById(id).classList.remove('flex');
+            });
+        }
+
         // --- Audio ---
         function initAudio() {
             if(state.audioCtx) return;
@@ -369,72 +392,95 @@
             const ctx = state.audioCtx;
             const osc = ctx.createOscillator();
             const gainNode = ctx.createGain();
-            osc.connect(gainNode);
-            gainNode.connect(ctx.destination);
+            osc.connect(gainNode); gainNode.connect(ctx.destination);
             const now = ctx.currentTime;
 
             if (type === 'correct') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(523.25, now); 
-                osc.frequency.setValueAtTime(880.00, now + 0.1); 
-                gainNode.gain.setValueAtTime(0.3, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-                osc.start(now);
-                osc.stop(now + 0.4);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(523.25, now); osc.frequency.setValueAtTime(880.00, now + 0.1); 
+                gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
             } else if (type === 'wrong') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, now);
-                osc.frequency.linearRampToValueAtTime(80, now + 0.3);
-                gainNode.gain.setValueAtTime(0.3, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc.start(now);
-                osc.stop(now + 0.3);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(80, now + 0.3);
+                gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
             } else if (type === 'hover') {
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(440, now);
-                gainNode.gain.setValueAtTime(0.05, now);
-                gainNode.gain.linearRampToValueAtTime(0, now + 0.05);
-                osc.start(now);
-                osc.stop(now + 0.05);
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(440, now);
+                gainNode.gain.setValueAtTime(0.05, now); gainNode.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
             } else if (type === 'click') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(600, now);
-                gainNode.gain.setValueAtTime(0.1, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-                osc.start(now);
-                osc.stop(now + 0.1);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, now);
+                gainNode.gain.setValueAtTime(0.1, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
             }
         }
 
         function speak(text) {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'th-TH';
-            utterance.rate = 1.0;
+            utterance.lang = 'th-TH'; utterance.rate = 1.0;
             window.speechSynthesis.speak(utterance);
         }
 
-        // --- Logic ---
-        function showMenu() {
-            state.step = 'MENU';
-            document.getElementById('loading-screen').classList.add('hidden');
-            document.getElementById('menu-screen').classList.remove('hidden');
-            document.getElementById('menu-screen').classList.add('flex');
-            document.getElementById('summary-screen').classList.add('hidden');
-            
-            // Reset timers
-            state.menuTimers = {};
+        // --- Logic Screens ---
+        function showModeSelect() {
+            state.step = 'MODE';
+            hideAllScreens();
+            document.getElementById('mode-screen').classList.remove('hidden');
+            document.getElementById('mode-screen').classList.add('flex');
+            interactionState.currentMenuBtn = null;
             document.querySelectorAll('.loading-bar').forEach(el => el.style.width = '0%');
+            cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+        }
+
+        function selectMode(selectedMode) {
+            playSound('click');
+            state.mode = selectedMode;
+            showDifficultySelect();
+        }
+
+        function showDifficultySelect() {
+            state.step = 'DIFFICULTY';
+            hideAllScreens();
+            document.getElementById('difficulty-screen').classList.remove('hidden');
+            document.getElementById('difficulty-screen').classList.add('flex');
+            interactionState.currentMenuBtn = null;
+            document.querySelectorAll('.loading-bar').forEach(el => el.style.width = '0%');
+            cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+        }
+
+        function applyModeLayout() {
+            const zc = document.getElementById('zones-container');
+            const zones = document.querySelectorAll('.answer-zone');
+            const fingerIndicator = document.getElementById('finger-indicator');
+            const labels = document.querySelectorAll('.label-text');
+            
+            fingerIndicator.classList.add('hidden');
+            
+            // Layout is standard 4 Columns for all modes, just labels change
+            zc.className = 'absolute inset-0 w-full h-full flex z-10 pointer-events-none';
+            zones.forEach((el, idx) => {
+                let borderClass = idx < 3 ? 'border-r border-white/10' : '';
+                el.className = `answer-zone flex-1 relative flex flex-col justify-end pb-12 items-center group cursor-pointer hover:bg-white/5 pointer-events-auto ${borderClass}`;
+            });
+
+            if (state.mode === 'body') {
+                labels[0].innerText = "ช่อง 1 (ก)"; labels[1].innerText = "ช่อง 2 (ข)";
+                labels[2].innerText = "ช่อง 3 (ค)"; labels[3].innerText = "ช่อง 4 (ง)";
+            } else {
+                labels[0].innerText = "1 (ก)"; labels[1].innerText = "2 (ข)";
+                labels[2].innerText = "3 (ค)"; labels[3].innerText = "4 (ง)";
+                if (state.mode === 'finger') fingerIndicator.classList.remove('hidden');
+            }
         }
 
         function startGame(level) {
-            initAudio();
-            playSound('click');
+            initAudio(); playSound('click');
             
             state.difficulty = level;
             state.score = 0;
             state.step = 'PLAY';
             state.currentQuestionIndex = 0;
+            interactionState.currentZone = -1;
 
             let rawQuestions = [...QUESTIONS[level]];
             if (level === 'easy') state.totalQuestions = 10;
@@ -442,14 +488,12 @@
             else if (level === 'hard') state.totalQuestions = 30;
 
             let pool = [];
-            while(pool.length < state.totalQuestions) {
-                let batch = shuffleArray([...rawQuestions]);
-                pool = pool.concat(batch);
-            }
+            while(pool.length < state.totalQuestions) { pool = pool.concat(shuffleArray([...rawQuestions])); }
             state.questionQueue = pool.slice(0, state.totalQuestions);
 
-            document.getElementById('menu-screen').classList.add('hidden');
-            document.getElementById('menu-screen').classList.remove('flex');
+            applyModeLayout();
+
+            hideAllScreens();
             document.getElementById('game-screen').classList.remove('hidden');
             document.getElementById('game-screen').classList.add('flex');
             document.getElementById('score-display').innerText = "0";
@@ -458,26 +502,18 @@
         }
 
         function nextQuestion() {
-            if (state.currentQuestionIndex >= state.totalQuestions) {
-                endGame();
-                return;
-            }
+            if (state.currentQuestionIndex >= state.totalQuestions) { endGame(); return; }
 
             state.currentQuestionIndex++;
             state.canAnswer = false;
-            state.zoneTimers = [0,0,0,0];
-            updateProgressBars();
+            
+            interactionState.currentZone = -1;
+            updateProgressBars(0, -1);
             
             document.getElementById('progress-display').innerText = `${state.currentQuestionIndex}/${state.totalQuestions}`;
 
             let qData = state.questionQueue[state.currentQuestionIndex - 1];
-            let displayOptions = shuffleArray([...qData.options]);
-            
-            state.currentQ = {
-                ...qData,
-                displayOptions: displayOptions
-            };
-
+            state.currentQ = { ...qData, displayOptions: shuffleArray([...qData.options]) };
             document.getElementById('question-display').innerText = state.currentQ.q;
             
             state.currentQ.displayOptions.forEach((opt, idx) => {
@@ -488,25 +524,20 @@
             });
 
             speak(state.currentQ.q);
-            setTimeout(() => { state.canAnswer = true; }, 1000);
+            setTimeout(() => { state.canAnswer = true; }, 1000); 
         }
 
-        // New function to handle manual clicks on answers
         function handleZoneClick(idx) {
-            // Only allow clicking if in PLAY state and answering is enabled
-            if (state.step === 'PLAY' && state.canAnswer) {
-                checkAnswer(idx);
-            }
+            if (state.step === 'PLAY' && state.canAnswer) checkAnswer(idx);
         }
 
         function checkAnswer(idx) {
             state.canAnswer = false;
-            const selectedAnswer = state.currentQ.displayOptions[idx];
-            const isCorrect = selectedAnswer === state.currentQ.a;
+            interactionState.currentZone = -1; // Reset zone
+            const isCorrect = state.currentQ.displayOptions[idx] === state.currentQ.a;
             
             if (isCorrect) {
-                state.score++;
-                playSound('correct');
+                state.score++; playSound('correct');
                 document.getElementById('score-display').innerText = state.score;
                 document.querySelector(`#zone-${idx} .option-bg`).classList.add('scale-125', 'bg-green-100');
                 speak("ถูกต้อง");
@@ -521,11 +552,8 @@
         }
 
         function endGame() {
-            state.step = 'SUMMARY';
-            playSound('click');
-            
-            document.getElementById('game-screen').classList.add('hidden');
-            document.getElementById('game-screen').classList.remove('flex');
+            state.step = 'SUMMARY'; playSound('click');
+            hideAllScreens();
             document.getElementById('summary-screen').classList.remove('hidden');
             document.getElementById('summary-screen').classList.add('flex');
             
@@ -533,16 +561,12 @@
             document.getElementById('total-score-label').innerText = `/ ${state.totalQuestions}`;
             
             let percent = (state.score / state.totalQuestions) * 100;
-            let msg = "";
-            if(percent >= 80) msg = "เก่งยอดเยี่ยม!";
-            else if(percent >= 50) msg = "ทำได้ดีมาก!";
-            else msg = "สู้ๆ นะครับ!";
-            
+            let msg = percent >= 80 ? "เก่งยอดเยี่ยม!" : percent >= 50 ? "ทำได้ดีมาก!" : "สู้ๆ นะครับ!";
             speak(`จบเกมครับ คุณได้ ${state.score} คะแนน ${msg}`);
             startConfetti();
         }
 
-        // --- Interaction Logic (Motion) ---
+        // --- Interaction Logic ---
         function isCursorOverElement(x, y, element) {
             const rect = element.getBoundingClientRect();
             return (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
@@ -550,159 +574,312 @@
 
         function processMenuInteraction(x, y) {
             const buttons = document.querySelectorAll('.interactive-btn');
-            let isHoveringAny = false;
-            let maxTimer = 0;
+            let targetBtn = null;
 
             buttons.forEach(btn => {
-                if (btn.offsetParent === null) return; // Skip hidden buttons
-
-                const btnId = btn.id || btn.innerText;
-                if (!state.menuTimers[btnId]) state.menuTimers[btnId] = 0;
-
+                if (btn.offsetParent === null) return; 
                 if (isCursorOverElement(x, y, btn)) {
-                    isHoveringAny = true;
-                    btn.classList.add('hover-active');
-                    state.menuTimers[btnId] += 50; 
-                    
-                    if (state.menuTimers[btnId] % 500 < 50) playSound('hover');
-
-                    const bar = btn.querySelector('.loading-bar');
-                    if (bar) {
-                        const pct = Math.min(100, (state.menuTimers[btnId] / CONFIG.selectionThreshold) * 100);
-                        bar.style.width = `${pct}%`;
-                    }
-
-                    if (state.menuTimers[btnId] > maxTimer) maxTimer = state.menuTimers[btnId];
-
-                    if (state.menuTimers[btnId] >= CONFIG.selectionThreshold) {
-                        state.menuTimers[btnId] = 0;
-                        if(bar) bar.style.width = '0%';
-                        btn.classList.remove('hover-active');
-                        
-                        if (btn.id === 'btn-easy') startGame('easy');
-                        else if (btn.id === 'btn-medium') startGame('medium');
-                        else if (btn.id === 'btn-hard') startGame('hard');
-                        else if (btn.id === 'btn-quit') endGame(); 
-                        else if (btn.id === 'btn-home') showMenu(); 
-                    }
-
-                } else {
-                    btn.classList.remove('hover-active');
-                    state.menuTimers[btnId] = Math.max(0, state.menuTimers[btnId] - 100);
-                    const bar = btn.querySelector('.loading-bar');
-                    if (bar) bar.style.width = `${(state.menuTimers[btnId] / CONFIG.selectionThreshold) * 100}%`;
+                    targetBtn = btn;
                 }
             });
 
-            const pct = Math.min(1, maxTimer / CONFIG.selectionThreshold);
-            const offset = cursorCircumference - (pct * cursorCircumference);
-            cursorProgressCircle.style.strokeDashoffset = offset;
+            if (targetBtn) {
+                let btnId = targetBtn.id || targetBtn.innerText;
+                
+                if (interactionState.currentMenuBtn !== btnId) {
+                    // เพิ่งเริ่มนำมือไปวางปุ่มใหม่
+                    interactionState.currentMenuBtn = btnId;
+                    interactionState.menuStartTime = Date.now();
+                    playSound('hover');
+                    
+                    buttons.forEach(b => b.classList.remove('hover-active'));
+                    targetBtn.classList.add('hover-active');
+                    document.querySelectorAll('.loading-bar').forEach(b => b.style.width = '0%');
+                } else {
+                    // วางแช่ไว้ที่ปุ่มเดิม คำนวณเวลาที่ผ่านไป (Real-time Date.now)
+                    let elapsed = Date.now() - interactionState.menuStartTime;
+                    
+                    const bar = targetBtn.querySelector('.loading-bar');
+                    if (bar) bar.style.width = `${Math.min(100, (elapsed / CONFIG.selectionThreshold) * 100)}%`;
+                    
+                    let pct = Math.min(1, elapsed / CONFIG.selectionThreshold);
+                    cursorProgressCircle.style.strokeDashoffset = cursorCircumference - (pct * cursorCircumference);
+
+                    // ถ้าครบเวลาที่กำหนด
+                    if (elapsed >= CONFIG.selectionThreshold) {
+                        interactionState.currentMenuBtn = null;
+                        if(bar) bar.style.width = '0%';
+                        targetBtn.classList.remove('hover-active');
+                        cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+                        
+                        if (btnId === 'btn-mode-hand') selectMode('hand');
+                        else if (btnId === 'btn-mode-finger') selectMode('finger');
+                        else if (btnId === 'btn-mode-body') selectMode('body');
+                        else if (btnId === 'btn-easy') startGame('easy');
+                        else if (btnId === 'btn-medium') startGame('medium');
+                        else if (btnId === 'btn-hard') startGame('hard');
+                        else if (btnId === 'btn-quit') endGame(); 
+                        else if (btnId === 'btn-home') showModeSelect(); 
+                    }
+                }
+            } else {
+                // ไม่มีปุ่มใดโดนเลือก
+                if (interactionState.currentMenuBtn !== null) {
+                    interactionState.currentMenuBtn = null;
+                    buttons.forEach(b => {
+                        b.classList.remove('hover-active');
+                        const bar = b.querySelector('.loading-bar');
+                        if (bar) bar.style.width = '0%';
+                    });
+                    cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+                }
+            }
         }
 
-        // --- MediaPipe ---
-        function onResults(results) {
+        function processGameplayInteraction() {
+            let targetZone = -1;
+
+            if (state.mode === 'hand') {
+                if (state.cursorY < window.innerHeight * 0.2) return; 
+                const zoneW = window.innerWidth / 4;
+                targetZone = Math.floor(state.cursorX / zoneW);
+            } 
+            else if (state.mode === 'finger') {
+                if (state.detectedFingers >= 1 && state.detectedFingers <= 4) {
+                    targetZone = state.detectedFingers - 1; 
+                }
+            }
+            else if (state.mode === 'body') {
+                if (state.bodyX === null || state.bodyY === null) return;
+                let screenX = 1 - state.bodyX; // Canvas is horizontally mirrored
+                
+                if (screenX < 0.25) targetZone = 0; 
+                else if (screenX < 0.50) targetZone = 1; 
+                else if (screenX < 0.75) targetZone = 2; 
+                else targetZone = 3; 
+            }
+
+            // จัดการเวลาด้วย Date.now()
+            if (targetZone !== -1) {
+                if (interactionState.currentZone !== targetZone) {
+                    // เพิ่งเข้าโซนใหม่
+                    interactionState.currentZone = targetZone;
+                    interactionState.zoneStartTime = Date.now();
+                    playSound('hover');
+                    updateProgressBars(0, targetZone);
+                } else {
+                    // อยู่ในโซนเดิม คำนวณเวลาที่ผ่านไป
+                    let elapsed = Date.now() - interactionState.zoneStartTime;
+                    updateProgressBars(elapsed, targetZone);
+                    
+                    if (elapsed >= CONFIG.selectionThreshold) {
+                        checkAnswer(targetZone);
+                        interactionState.currentZone = -1; // Reset
+                    }
+                }
+            } else {
+                // ไม่ได้อยู่ในโซนใดๆ
+                if (interactionState.currentZone !== -1) {
+                    interactionState.currentZone = -1;
+                    updateProgressBars(0, -1);
+                }
+            }
+        }
+
+        function updateProgressBars(elapsed, activeZone) {
+            const zoneColors = [
+                'rgba(239, 68, 68, 0.25)', // Red (ก)
+                'rgba(59, 130, 246, 0.25)', // Blue (ข)
+                'rgba(234, 179, 8, 0.25)',  // Yellow (ค)
+                'rgba(34, 197, 94, 0.25)'   // Green (ง)
+            ];
+
+            for(let i=0; i<4; i++) {
+                const zoneEl = document.getElementById(`zone-${i}`);
+                const bar = document.querySelector(`#zone-${i} .progress-fill`);
+                
+                if(bar && zoneEl) {
+                    zoneEl.style.transition = 'background-color 0.2s'; // เพิ่ม Transition ให้สีค่อยๆ ขึ้น
+                    if (i === activeZone) {
+                        const pct = Math.min(100, (elapsed / CONFIG.selectionThreshold) * 100);
+                        bar.style.height = `${pct}%`;
+                        zoneEl.style.backgroundColor = zoneColors[i]; // แสดงฟิลเตอร์สีคำตอบ
+                    } else {
+                        bar.style.height = `0%`; // clear inactive zones
+                        zoneEl.style.backgroundColor = 'transparent'; // เคลียร์ฟิลเตอร์สี
+                    }
+                }
+            }
+            if (activeZone !== -1 && state.mode === 'hand') {
+                const pct = Math.min(1, elapsed / CONFIG.selectionThreshold);
+                cursorProgressCircle.style.strokeDashoffset = cursorCircumference - (pct * cursorCircumference);
+            } else if (activeZone === -1) {
+                cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+            }
+        }
+
+        // --- Custom Drawing Functions ---
+        
+        // วาดตัวเลขบนมือสำหรับ Finger Mode (ป้องกันตัวเลขกลับด้านบนจอที่ติด Mirror)
+        function drawFingerNumber(ctx, landmarks, count, canvasW, canvasH) {
+            if (count < 1 || count > 4) return;
+            
+            let minX = 1, minY = 1, maxX = 0;
+            for(let lm of landmarks) {
+                if(lm.x < minX) minX = lm.x;
+                if(lm.x > maxX) maxX = lm.x;
+                if(lm.y < minY) minY = lm.y;
+            }
+            
+            const x = ((minX + maxX) / 2) * canvasW;
+            const y = (minY * canvasH) - 20; // ให้อยู่เหนือปลายนิ้วขึ้นไปนิดหน่อย
+            
+            ctx.save();
+            // Translate ไปยังจุดที่จะวาด และ Flip แนวนอน เพื่อหักล้างกับ CSS Mirror
+            ctx.translate(x, y);
+            ctx.scale(-1, 1); 
+            
+            ctx.font = "bold 120px Kanit, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom";
+            
+            const colors = ['#EF4444', '#3B82F6', '#EAB308', '#22C55E']; 
+            ctx.fillStyle = colors[count - 1]; 
+            
+            ctx.shadowColor = "rgba(255,255,255,0.9)";
+            ctx.shadowBlur = 20;
+            ctx.fillText(count.toString(), 0, 0);
+            
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.strokeText(count.toString(), 0, 0);
+            
+            ctx.restore();
+        }
+
+        // ฟังก์ชันนับนิ้ว
+        function countFingersOnly(landmarks) {
+            let count = 0;
+            if (landmarks[8].y < landmarks[6].y - 0.02) count++;  
+            if (landmarks[12].y < landmarks[10].y - 0.02) count++; 
+            if (landmarks[16].y < landmarks[14].y - 0.02) count++; 
+            if (landmarks[20].y < landmarks[18].y - 0.02) count++; 
+            return count;
+        }
+
+        // --- MediaPipe Handlers ---
+        function onResultsHands(results) {
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                state.isHandDetected = true;
                 const landmarks = results.multiHandLandmarks[0];
                 const handPoint = landmarks[9]; 
                 
-                const vx = (1 - handPoint.x) * window.innerWidth;
-                const vy = handPoint.y * window.innerHeight;
+                state.cursorX = (1 - handPoint.x) * window.innerWidth;
+                state.cursorY = handPoint.y * window.innerHeight;
+                
+                // ตรวจสอบโหมดเกมปัจจุบัน
+                if (state.step === 'PLAY' && state.mode === 'finger') {
+                    // **โหมดนิ้วมือ**: ซ่อนวงแหวนสีแดง และวาดตัวเลขบนมือ
+                    cursorElement.classList.add('hidden');
+                    state.detectedFingers = countFingersOnly(landmarks);
+                    document.getElementById('finger-count').innerText = state.detectedFingers;
+                    drawFingerNumber(canvasCtx, landmarks, state.detectedFingers, canvasElement.width, canvasElement.height);
+                    
+                    if(state.canAnswer) processGameplayInteraction();
+                } 
+                else {
+                    // **โหมดอื่นๆ หรือ อยู่หน้าเมนู**: ใช้วงแหวนสีแดงปกติ
+                    state.detectedFingers = countFingersOnly(landmarks);
+                    if (document.getElementById('finger-count')) {
+                        document.getElementById('finger-count').innerText = state.detectedFingers;
+                    }
+                    
+                    cursorElement.classList.remove('hidden');
+                    cursorElement.style.left = `${state.cursorX}px`; 
+                    cursorElement.style.top = `${state.cursorY}px`;
 
-                state.cursorX = vx;
-                state.cursorY = vy;
-
-                cursorElement.classList.remove('hidden');
-                cursorElement.style.left = `${vx}px`; 
-                cursorElement.style.top = `${vy}px`;
-
-                if (state.step === 'PLAY' && state.canAnswer) {
-                    processZoneInteraction(vx, vy);
-                    processMenuInteraction(vx, vy); 
-                } else if (state.step === 'MENU' || state.step === 'SUMMARY') {
-                    processMenuInteraction(vx, vy);
+                    if (state.step === 'PLAY' && state.canAnswer && state.mode === 'hand') {
+                        processGameplayInteraction();
+                    } else if (state.step !== 'PLAY') {
+                        processMenuInteraction(state.cursorX, state.cursorY);
+                    }
                 }
-
             } else {
-                state.isHandDetected = false;
+                // หากไม่มีมือ
+                state.detectedFingers = 0;
+                document.getElementById('finger-count').innerText = 0;
                 cursorElement.classList.add('hidden');
-                if(state.step === 'PLAY') {
-                    state.zoneTimers = state.zoneTimers.map(t => Math.max(0, t - 50));
-                    updateProgressBars();
-                }
-                Object.keys(state.menuTimers).forEach(k => {
-                    state.menuTimers[k] = 0;
-                });
+                
+                interactionState.currentZone = -1;
+                interactionState.currentMenuBtn = null;
+                updateProgressBars(0, -1);
+                document.querySelectorAll('.loading-bar').forEach(b => b.style.width = '0%');
                 cursorProgressCircle.style.strokeDashoffset = cursorCircumference;
+                document.querySelectorAll('.interactive-btn').forEach(b => b.classList.remove('hover-active'));
             }
             canvasCtx.restore();
         }
 
-        function processZoneInteraction(x, y) {
-            if (y < window.innerHeight * 0.2) return; 
+        function onPoseResults(results) {
+            if (state.step !== 'PLAY' || state.mode !== 'body') return;
 
-            const width = window.innerWidth;
-            const zoneW = width / 4;
-            const currentZone = Math.floor(x / zoneW);
-            let maxTimer = 0;
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-            for(let i=0; i<4; i++) {
-                if(i === currentZone) {
-                    state.zoneTimers[i] += 50; 
-                    if (state.zoneTimers[i] % 800 < 50) playSound('hover');
-                } else {
-                    state.zoneTimers[i] = Math.max(0, state.zoneTimers[i] - 100);
+            if (results.poseLandmarks) {
+                // **โหมดขยับลำตัว**: ซ่อนวงแหวนสีแดง
+                cursorElement.classList.add('hidden');
+
+                const nose = results.poseLandmarks[0];
+                state.bodyX = nose.x;
+                state.bodyY = nose.y;
+
+                if (state.canAnswer) {
+                    processGameplayInteraction();
                 }
-                if (state.zoneTimers[i] > maxTimer) maxTimer = state.zoneTimers[i];
+            } else {
+                // หากไม่มีตัวคน
+                state.bodyX = null; state.bodyY = null;
+                cursorElement.classList.add('hidden');
+                
+                interactionState.currentZone = -1;
+                updateProgressBars(0, -1);
             }
-            updateProgressBars(maxTimer);
-            if(state.zoneTimers[currentZone] >= CONFIG.selectionThreshold) {
-                checkAnswer(currentZone);
-            }
+            canvasCtx.restore();
         }
 
-        function updateProgressBars(maxTimer) {
-            state.zoneTimers.forEach((t, i) => {
-                const pct = Math.min(100, (t / CONFIG.selectionThreshold) * 100);
-                const bar = document.querySelector(`#zone-${i} .progress-fill`);
-                if(bar) bar.style.height = `${pct}%`;
-            });
-            
-            if (maxTimer !== undefined) {
-                const pct = Math.min(1, maxTimer / CONFIG.selectionThreshold);
-                const offset = cursorCircumference - (pct * cursorCircumference);
-                cursorProgressCircle.style.strokeDashoffset = offset;
-            }
-        }
-
-        // --- Init ---
+        // --- Initialization ---
         async function init() {
             const video = document.getElementById('webcam');
-            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
             
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-            
-            hands.onResults(onResults);
-            state.hands = hands;
+            // Initialize Hands
+            state.hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            state.hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+            state.hands.onResults(onResultsHands);
+
+            // Initialize Pose
+            state.pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+            state.pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+            state.pose.onResults(onPoseResults);
 
             const camera = new Camera(video, {
-                onFrame: async () => { await hands.send({image: video}); },
-                width: 640,
-                height: 480
+                onFrame: async () => { 
+                    if (state.step === 'PLAY' && state.mode === 'body') {
+                        await state.pose.send({image: video});
+                    } else {
+                        await state.hands.send({image: video});
+                    }
+                },
+                width: 640, height: 480
             });
 
             try {
                 await camera.start();
-                setTimeout(showMenu, 1500);
+                setTimeout(() => { showModeSelect(); }, 3000);
             } catch (e) {
                 console.error(e);
                 document.getElementById('loading-status').innerText = "เกิดข้อผิดพลาด: ไม่สามารถเปิดกล้องได้";
@@ -712,21 +889,16 @@
         function startConfetti() {
             const canvas = document.getElementById('confetti-canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
             const pieces = Array.from({length: 100}).map(() => ({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height - canvas.height,
-                color: `hsl(${Math.random()*360}, 100%, 50%)`,
-                size: Math.random() * 10 + 5,
-                speed: Math.random() * 5 + 3
+                x: Math.random() * canvas.width, y: Math.random() * canvas.height - canvas.height,
+                color: `hsl(${Math.random()*360}, 100%, 50%)`, size: Math.random() * 10 + 5, speed: Math.random() * 5 + 3
             }));
             function loop() {
                 ctx.clearRect(0,0,canvas.width,canvas.height);
                 pieces.forEach(p => {
                     ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size);
-                    p.y += p.speed;
-                    if(p.y > canvas.height) p.y = -20;
+                    p.y += p.speed; if(p.y > canvas.height) p.y = -20;
                 });
                 if(state.step === 'SUMMARY') requestAnimationFrame(loop);
             }
